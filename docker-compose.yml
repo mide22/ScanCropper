@@ -23,12 +23,12 @@ services:
       - v-results:/srv/results
 
   # Samba by https://hub.docker.com/r/dperson/samba
-  # todo: fix watchdog compatibility (should use PollingObserver ?)
   srv-samba:
     image: dperson/samba
     container_name: samba
     command: >
       -S
+      -r
       -u "scanner;put-any-password-here"
       -s "Photoscan-Input;/share/scanner/input;yes;no;no;scanner;;;Photos to crop"
       -s "Scanned;/share/scanner;yes;no;no;scanner;;;Scanned and processed files"
