@@ -17,6 +17,12 @@ class ArgParser:
                             
         parser.add_argument('--odir', '-o', type=str,
                             help="Specify where to save the output images.")
+
+        parser.add_argument('--pdir', '-po', type=str,
+                            help="Specify where to move the processed input scans.")
+
+        parser.add_argument('--watch', '-w', action=argparse.BooleanOptionalAction, default=False,
+                            help="Specify weather to watch input location for new scans and process them.")
         
         parser.add_argument('--output-format', '-of', type=str, default='jpg',
                             help='Defines the image output format (jpg or png).')
@@ -54,7 +60,7 @@ class ArgParser:
 
         
         # Check if input and output directories are specified.
-        if args.dir is None or args.odir is None:
+        if args.dir is None or args.odir is None or args.pdir is None:
             raise Exception("Input and Output directory must be specified")
 
-        return Settings(args.threads, args.thresh, args.blur, args.scale, args.dir, args.odir, args.output_file_name_prefix, args.manual_name, args.manual_metadata, args.output_format)
+        return Settings(args.threads, args.thresh, args.blur, args.scale, args.dir, args.odir, args.pdir, args.watch, args.output_file_name_prefix, args.manual_name, args.manual_metadata, args.output_format)
