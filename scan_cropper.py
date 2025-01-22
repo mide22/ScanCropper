@@ -7,7 +7,7 @@ from settings import Settings
 # needed for Watchdog
 import time
 from watchdog.events import FileSystemEvent, PatternMatchingEventHandler
-from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
@@ -257,6 +257,8 @@ class ScanCropper(PatternMatchingEventHandler):
 
 
 	def inspect_file(self, file):
+		if not os.path.isfile(file):
+			return
 		processed = False
 		if file.endswith('.pdf') or file.endswith('.PDF'):
 			# Convert PDF to PNG and then process each PNG.
@@ -297,13 +299,17 @@ class ScanCropper(PatternMatchingEventHandler):
 
 
 	# Watchdog-event on (file) created
-	# def on_created(self, event: FileSystemEvent) -> None:
-		# on_created makes trouble with files while they are copied. So use on_closed only.
-		# if event.is_directory or not os.path.isfile(event.src_path) or os.path.getsize(event.src_path) < 1:
-		#	return
-		# print("Skip on_created")
-		# self.inspect_file(event.src_path)
+	def on_created(self, event: FileSystemEvent) -> None:
+		if event.is_directory or not os.path.isfile(event.src_path):
+			return
+		# dirty but working check if file copy is finish, https://stackoverflow.com/a/41105283
+		historicalSize = -1
+		while (os.path.isfile(event.src_path) and historicalSize != os.path.getsize(event.src_path)):
+			historicalSize = os.path.getsize(event.src_path)
+			time.sleep(3)
+		self.inspect_file(event.src_path)
 
+	# Obsolete since PollingObserver?!
 	def on_closed(self, event: FileSystemEvent) -> None:
 		if event.is_directory or not os.path.isfile(event.src_path) or os.path.getsize(event.src_path) < 1:
 			return
@@ -317,7 +323,7 @@ if __name__ == '__main__':
 	cropper.autocrop_images()
 	if settings.watch:
 		print("Start waiting for new scans.")
-		observer = Observer()
+		observer = PollingObserver(timeout=3)
 		observer.schedule(cropper, settings.input_dir, recursive=True)
 		observer.start()
 		try:
