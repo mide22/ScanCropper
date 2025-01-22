@@ -41,7 +41,6 @@ services:
       -s "OCR-Incomming-Documents;/share/scanner/documents-input;yes;no;no;scanner;;;Documents to OCR"
       -s "Scanned;/share/scanner;yes;no;no;scanner;;;Scanned and processed files"
     ports:
-      - 139
       - 445
     volumes:
       - v-photos-input:/share/scanner/photos-input
