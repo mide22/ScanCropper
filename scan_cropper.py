@@ -48,6 +48,11 @@ class ScanCropper(PatternMatchingEventHandler):
 			base_name = os.path.basename(pdf_path)
 			name_without_ext = os.path.splitext(base_name)[0]
 			png_path = os.path.join("./pdfTopng", f"{name_without_ext}.png")
+			if os.path.isfile(png_path):
+				nameindex = 1
+				while os.path.isfile(png_path):
+					png_path = os.path.join("./pdfTopng", f"{name_without_ext}("+str(nameindex)+").png")
+					nameindex += 1
 			# Save the image
 			pix.save(png_path)
 			print(f"Saved PNG file: {png_path}")
