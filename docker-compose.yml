@@ -5,10 +5,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: scancropper
+    restart: unless-stopped
     volumes:
-      - v-input:/mnt/scans/input
-      - v-processed:/mnt/scans/processed
-      - v-results:/mnt/scans/results
+      - v-photos-input:/mnt/scans/input
+      - v-photos-processed:/mnt/scans/processed
+      - v-photos-results:/mnt/scans/results
 
   # Web file browser to upload / download / delete files - by https://github.com/filebrowser/filebrowser/
   srv-filebrowser:
@@ -17,10 +18,15 @@ services:
     environment:
       # todo: auth user should be the same like samba user "scanner"
       FB_NOAUTH: 1
+    ports:
+      - 80
     volumes:
-      - v-input:/srv/input
-      - v-processed:/srv/processed
-      - v-results:/srv/results
+      - v-photos-input:/srv/photos-input
+      - v-photos-processed:/srv/photos-processed
+      - v-photos-results:/srv/photos-results
+      - v-documents-input:/srv/documents-input
+      - v-documents-ocr:/srv/documents-ocr
+      - v-documents-processed:/srv/documents-processed
 
   # Samba by https://hub.docker.com/r/dperson/samba
   srv-samba:
@@ -30,36 +36,86 @@ services:
       -S
       -r
       -u "scanner;put-any-password-here"
-      -s "Photoscan-Input;/share/scanner/input;yes;no;no;scanner;;;Photos to crop"
+      -s "Photoscan-Input;/share/scanner/photos-input;yes;no;no;scanner;;;Photos to crop"
+      -s "OCR-Incomming-Documents;/share/scanner/documents-input;yes;no;no;scanner;;;Documents to OCR"
       -s "Scanned;/share/scanner;yes;no;no;scanner;;;Scanned and processed files"
     ports:
       - 139
       - 445
     volumes:
-      - v-input:/share/scanner/input
-      - v-processed:/share/scanner/processed
-      - v-results:/share/scanner/results
+      - v-photos-input:/share/scanner/photos-input
+      - v-photos-processed:/share/scanner/photos-processed
+      - v-photos-results:/share/scanner/photos-results
+      - v-documents-input:/share/scanner/documents-input
+      - v-documents-ocr:/share/scanner/documents-ocr
+      - v-documents-processed:/share/scanner/documents-processed
 
-  # srv-pdfocr: todo: jbarlow83/ocrmypdf | https://github.com/ocrmypdf/OCRmyPDF
+  # OCR PDFs by https://github.com/ocrmypdf/OCRmyPDF
+  # https://ocrmypdf.readthedocs.io/en/latest/batch.html#hot-watched-folders
+  srv-pdfocr:
+    image: jbarlow83/ocrmypdf
+    container_name: pdfocr
+    entrypoint: python3
+    command: watcher.py
+    environment:
+      # https://github.com/ocrmypdf/OCRmyPDF/blob/main/misc/watcher.py#L162C13-L162C19
+      OCR_USE_POLLING: 1
+      OCR_POLL_NEW_FILE_SECONDS: 3
+      OCR_RETRIES_LOADING_FILE: 5
+      OCR_ON_SUCCESS_ARCHIVE: 1
+      # set ocrmypdf arguments as JSON, https://ocrmypdf.readthedocs.io/en/latest/cookbook.html
+      OCR_JSON_SETTINGS: '{"language": "eng+deu", "deskew": true, "rotate_pages": true, "clean": true, "redo_ocr": true}'
+      PYTHONBUFFERED: 1
+    restart: unless-stopped
+    volumes:
+      - v-documents-input:/input
+      - v-documents-ocr:/output
+      - v-documents-processed:/processed
 
 
-# Setup 3 volumes where to store the input scanned files, cropped results and the processed original files.
+# Setup volumes where to store the input scanned files, results and the processed original files.
+
 volumes:
-  v-input:
+  # Volumes for scanned photos
+  v-photos-input:
     driver: local
     driver_opts:
-      device: ./scans/input/
+      device: ./scans/photos/input/
       o: bind
       type: none
-  v-processed:
+  # Cropped results output
+  v-photos-results:
     driver: local
     driver_opts:
-      device: ./scans/processed/
+      device: ./scans/photos/results/
       o: bind
       type: none
-  v-results:
+  # Archive of original files after processing
+  v-photos-processed:
     driver: local
     driver_opts:
-      device: ./scans/results/
+      device: ./scans/photos/processed/
+      o: bind
+      type: none
+  #
+  # Volumes for pdf-documents to process OCR:
+  v-documents-input:
+    driver: local
+    driver_opts:
+      device: ./scans/documents/input
+      o: bind
+      type: none
+  # OCRed results output
+  v-documents-ocr:
+    driver: local
+    driver_opts:
+      device: ./scans/documents/ocr/
+      o: bind
+      type: none
+  # archive of original files after processing
+  v-documents-processed:
+    driver: local
+    driver_opts:
+      device: ./scans/documents/processed/
       o: bind
       type: none
