@@ -1,12 +1,17 @@
 import numpy as np
-import cv2, os, argparse, datetime, time, errno, math, multiprocessing, pyexiv2, fitz
+import cv2, os, argparse, datetime, time, errno, math, multiprocessing, pyexiv2, pymupdf, shutil
 from concurrent.futures import ThreadPoolExecutor
 from arg_parse import ArgParser
 from settings import Settings
 
+# needed for Watchdog
+import time
+from watchdog.events import FileSystemEvent, PatternMatchingEventHandler
+from watchdog.observers import Observer
+
 os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
-class ScanCropper:
+class ScanCropper(PatternMatchingEventHandler):
 
 	def __init__(self, settings: Settings):
 		self.settings = settings
@@ -20,20 +25,22 @@ class ScanCropper:
 		except OSError as e:
 			if e.errno != errno.EEXIST:
 				raise
-	
+
+		# Watchdog
+		PatternMatchingEventHandler.__init__(self, patterns=self.settings.supported_file_patterns, ignore_directories=True, case_sensitive=False)
 
 	def get_datetime(self):
 		return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 	def convert_pdf_to_png(self, pdf_path):
 		dpi = 600
-		doc = fitz.open(pdf_path)
+		doc = pymupdf.open(pdf_path)
 		png_paths = []
 
 		for i in range(len(doc)):
 			# Rendering options.
 			zoom = dpi / 72
-			mat = fitz.Matrix(zoom, zoom)
+			mat = pymupdf.Matrix(zoom, zoom)
 			# Render page to an image
 			pix = doc.get_page_pixmap(i, matrix=mat)
 			os.makedirs("./pdfTopng", exist_ok=True)
@@ -244,20 +251,34 @@ class ScanCropper:
 			print(f'No scans found in file {file}')
 
 
+	def inspect_file(self, file):
+		processed = False
+		if file.endswith('.pdf') or file.endswith('.PDF'):
+			# Convert PDF to PNG and then process each PNG.
+			png_paths = self.convert_pdf_to_png(file)
+			for png_path in png_paths:
+				print('=============')
+				self.process_file(png_path)
+				os.remove(png_path)
+				processed = True
+		elif file.endswith(tuple(self.settings.image_extensions)):
+			print('=============')
+			self.process_file(file)
+			processed = True
+
+		if processed:
+			if not os.path.isdir(self.settings.processed_dir):
+				os.mkdir(self.settings.processed_dir)
+			print('File ' + str(os.path.basename(file)) + ' processed, move it to ' + str(self.settings.processed_dir))
+			shutil.copy(file, os.path.join(self.settings.processed_dir, os.path.basename(file)))
+			os.remove(file)
 
 
 	def autocrop_images(self):
-		for file in os.listdir(self.settings.input_dir):
-			file = os.path.join(self.settings.input_dir, file)
-			if file.endswith('.pdf') or file.endswith('PDF'):
-				# Convert PDF to PNG and then process each PNG.
-				png_paths = self.convert_pdf_to_png(file)
-				for png_path in png_paths:
-					print('=============')
-					self.process_file(png_path)
-			elif file.endswith(tuple(self.settings.image_extensions)):
-				print('=============')
-				self.process_file(file)
+		for file_name in os.listdir(self.settings.input_dir):
+			file = os.path.join(self.settings.input_dir, file_name)
+			self.inspect_file(file)
+
 
 		#for file in [f for f in os.listdir(self.settings.input_dir) if f.endswith(tuple(self.settings.image_extensions))]:
 		#	self.process_file(file)
@@ -269,9 +290,36 @@ class ScanCropper:
 			print("Successfully cropped all the images from the scan files.")
 		print("Cropped {} pictures from {} scan files.".format(self.scans, self.images))
 
+
+	# Watchdog-event on (file) created
+	# def on_created(self, event: FileSystemEvent) -> None:
+		# on_created makes trouble with files while they are copied. So use on_closed only.
+		# if event.is_directory or not os.path.isfile(event.src_path) or os.path.getsize(event.src_path) < 1:
+		#	return
+		# print("Skip on_created")
+		# self.inspect_file(event.src_path)
+
+	def on_closed(self, event: FileSystemEvent) -> None:
+		if event.is_directory or not os.path.isfile(event.src_path) or os.path.getsize(event.src_path) < 1:
+			return
+		self.inspect_file(event.src_path)
+
 #--------------------------------------------------------------------
 
 if __name__ == '__main__':
 	settings = ArgParser.parse()
 	cropper = ScanCropper(settings)
 	cropper.autocrop_images()
+	if settings.watch:
+		print("Start waiting for new scans.")
+		observer = Observer()
+		observer.schedule(cropper, settings.input_dir, recursive=True)
+		observer.start()
+		try:
+			while True:
+				time.sleep(1)
+		except KeyboardInterrupt:
+			observer.stop()
+		finally:
+			observer.stop()
+			observer.join()
