@@ -33,8 +33,12 @@ services:
     image: filebrowser/filebrowser:v2
     container_name: filebrowser
     environment:
-      # todo: auth user should be the same like samba user "scanner"
-      FB_NOAUTH: 1
+      FB_USERNAME: scanner
+      # Password is sc4nn3rPazzw()rrrd
+      # todo: change password (bcrypt hash), https://bcrypt-generator.com or https://gchq.github.io/CyberChef/#recipe=Bcrypt(12)
+      FB_PASSWORD: '$2a$12$7IIEB9y.pt7Q0S.03.g0qeHcRXBMI5IG7tkUbT7Dr6DOPwAe/LHnC'
+      # or disable auth:
+      # FB_NOAUTH: 1
     labels:
       - traefik.enable=true
       - traefik.http.routers.filebrowser.entrypoints=filebrowser
@@ -50,6 +54,7 @@ services:
       - v-documents-processed:/srv/documents-processed
 
   # Samba by https://hub.docker.com/r/dperson/samba
+  # todo: change the password sc4nn3rPazzw()rrrd
   srv-samba:
     image: dperson/samba
     container_name: samba
@@ -57,7 +62,7 @@ services:
       -p
       -S
       -r
-      -u "scanner;put-any-password-here"
+      -u "scanner;sc4nn3rPazzw()rrrd"
       -s "Photoscan-Input;/share/scanner/photos-input;yes;no;no;scanner;;;Photos to crop"
       -s "OCR-Incomming-Documents;/share/scanner/documents-input;yes;no;no;scanner;;;Documents to OCR"
       -s "Scanned;/share/scanner;yes;no;no;scanner;;;Scanned and processed files"
