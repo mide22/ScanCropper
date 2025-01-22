@@ -22,15 +22,16 @@ services:
       - v-processed:/srv/processed
       - v-results:/srv/results
 
-  # Samba by https://github.com/DeftWork/samba
-  # todo: add Samba V1, fix x-permission on uploaded files, fix watchdog compatibility.
-  src-samba:
-    image: elswork/samba
+  # Samba by https://hub.docker.com/r/dperson/samba
+  # todo: fix watchdog compatibility (should use PollingObserver ?)
+  srv-samba:
+    image: dperson/samba
     container_name: samba
     command: >
-      -u "1000:1000:scanner:scanner:put-any-password-here"
-      -s "Photoscan-Input:/share/scanner/input:rw:scanner"
-      -s "Scanned:/share/scanner:rw:scanner"
+      -S
+      -u "scanner;put-any-password-here"
+      -s "Photoscan-Input;/share/scanner/input;yes;no;no;scanner;;;Photos to crop"
+      -s "Scanned;/share/scanner;yes;no;no;scanner;;;Scanned and processed files"
     ports:
       - 139
       - 445
@@ -38,6 +39,9 @@ services:
       - v-input:/share/scanner/input
       - v-processed:/share/scanner/processed
       - v-results:/share/scanner/results
+
+  # srv-pdfocr: todo: jbarlow83/ocrmypdf | https://github.com/ocrmypdf/OCRmyPDF
+
 
 # Setup 3 volumes where to store the input scanned files, cropped results and the processed original files.
 volumes:
