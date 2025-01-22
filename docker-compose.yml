@@ -33,6 +33,7 @@ services:
     image: dperson/samba
     container_name: samba
     command: >
+      -p
       -S
       -r
       -u "scanner;put-any-password-here"
