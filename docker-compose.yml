@@ -1,0 +1,61 @@
+services:
+  # ScanCropper itself
+  srv-scancropper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scancropper
+    volumes:
+      - v-input:/mnt/scans/input
+      - v-processed:/mnt/scans/processed
+      - v-results:/mnt/scans/results
+
+  # Web file browser to upload / download / delete files - by https://github.com/filebrowser/filebrowser/
+  srv-filebrowser:
+    image: filebrowser/filebrowser:v2
+    container_name: filebrowser
+    environment:
+      # todo: auth user should be the same like samba user "scanner"
+      FB_NOAUTH: 1
+    volumes:
+      - v-input:/srv/input
+      - v-processed:/srv/processed
+      - v-results:/srv/results
+
+  # Samba by https://github.com/DeftWork/samba
+  # todo: add Samba V1, fix x-permission on uploaded files, fix watchdog compatibility.
+  src-samba:
+    image: elswork/samba
+    container_name: samba
+    command: >
+      -u "1000:1000:scanner:scanner:put-any-password-here"
+      -s "Photoscan-Input:/share/scanner/input:rw:scanner"
+      -s "Scanned:/share/scanner:rw:scanner"
+    ports:
+      - 139
+      - 445
+    volumes:
+      - v-input:/share/scanner/input
+      - v-processed:/share/scanner/processed
+      - v-results:/share/scanner/results
+
+# Setup 3 volumes where to store the input scanned files, cropped results and the processed original files.
+volumes:
+  v-input:
+    driver: local
+    driver_opts:
+      device: ./scans/input/
+      o: bind
+      type: none
+  v-processed:
+    driver: local
+    driver_opts:
+      device: ./scans/processed/
+      o: bind
+      type: none
+  v-results:
+    driver: local
+    driver_opts:
+      device: ./scans/results/
+      o: bind
+      type: none
