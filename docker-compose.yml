@@ -22,6 +22,9 @@ services:
       --providers.docker.exposedByDefault=false
       --entryPoints.filebrowser.address=:80
       --entryPoints.smb445.address=:445
+    networks:
+      - backend
+      - frontend
     ports:
       - 80
       - 445
@@ -43,6 +46,8 @@ services:
       - traefik.enable=true
       - traefik.http.routers.filebrowser.entrypoints=filebrowser
       - traefik.http.routers.filebrowser.rule=PathPrefix("/")
+    networks:
+      - backend
     ports:
       - 80
     volumes:
@@ -72,6 +77,8 @@ services:
       - traefik.tcp.routers.samba.rule=HostSNI("*")
       - traefik.tcp.routers.samba.service=samba-srv
       - traefik.tcp.services.samba-srv.loadbalancer.server.port=445
+    networks:
+      - backend
     ports:
       - 445
     volumes:
@@ -150,3 +157,9 @@ volumes:
       device: ./scans/documents/processed/
       o: bind
       type: none
+
+# Define 2 networks: frontend to the scanner and user; backend is internal only
+networks:
+  frontend:
+#    external: true # must be created before
+  backend:
