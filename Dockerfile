@@ -14,10 +14,6 @@ LABEL org.opencontainers.image.description="Identify, crop, and correctly orient
 LABEL org.opencontainers.image.authors="Michael Deichen"
 LABEL org.opencontainers.image.vendor="Entson GmbH"
 
-ENV SC_DIR="/mnt/scans/input"
-ENV SC_ODIR="/mnt/scans/results"
-ENV SC_ODIR_PROCESSED="/mnt/scans/processed"
-
 # Not using VOLUME make it possible to mount one volume on "/mnt/scans" only
 # VOLUME ["/mnt/scans/input", "/mnt/scans/results", "/mnt/scans/processed"]
 
@@ -33,4 +29,4 @@ RUN pip3 install -U opencv-python-headless pymupdf watchdog
 
 COPY "*" "."
 
-ENTRYPOINT ["bash", "-c", "python3 -u scan_cropper.py --watch --dir ${SC_DIR} --odir ${SC_ODIR} --pdir ${SC_ODIR_PROCESSED}"]
+ENTRYPOINT ["bash", "-c", "python3 -u scan_cropper.py"]

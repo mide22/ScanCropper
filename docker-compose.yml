@@ -5,6 +5,17 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: scancropper
+    environment:
+      SC_DIR: "/mnt/scans/input"
+      SC_ODIR: "/mnt/scans/results"
+      SC_ODIR_PROCESSED: "/mnt/scans/processed"
+      # SC_NO_DIRSCAN: 1
+      SC_WATCH: 1
+      SC_POLLING_TIMEOUT: 3
+      SC_OUTPUT_JPEG_QUALITY: 86
+      # SC_OUTPUT_FILE_NAME_PREFIX: "MyPhoto "
+      # SC_OUTPUT_FILE_NAME_PREFIX_STRFTIME: "%Y-%m-%d_%H%M%S "
+      TZ: "Europe/Berlin"
     restart: unless-stopped
     volumes:
       - v-photos-input:/mnt/scans/input
