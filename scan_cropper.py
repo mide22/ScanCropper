@@ -3,10 +3,12 @@ import cv2, os, argparse, datetime, time, errno, math, multiprocessing, pyexiv2,
 from concurrent.futures import ThreadPoolExecutor
 from arg_parse import ArgParser
 from settings import Settings
+from datetime import date
 
 # needed for Watchdog
 import time
 from watchdog.events import FileSystemEvent, PatternMatchingEventHandler
+from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
 os.environ['QT_QPA_PLATFORM'] = 'xcb'
@@ -178,16 +180,25 @@ class ScanCropper(PatternMatchingEventHandler):
 		scans = self.find_scans(img)
 		if len(scans) > 0:
 			i = 0
+			if self.settings.output_file_name_prefix:
+				prefix = self.settings.output_file_name_prefix
+			else:
+				prefix = ""
+
+			if self.settings.output_file_name_prefix_strftime:
+				prefix = "{}{}".format(prefix, datetime.datetime.now().strftime(self.settings.output_file_name_prefix_strftime))
+
 			for scan in scans:
 				# Get the filename and metadata from the user
 				new_filename = f"{os.path.splitext(os.path.basename(file))[0]}_{i}"
+				if prefix:
+					new_filename = "{}{}".format(prefix, new_filename)
 
 				if self.settings.manual_name:
 					# Display the image
 					cv2.imshow('Image', scan)
 					cv2.waitKey(0)
 					cv2.destroyAllWindows()
-
 					new_filename = input("Please enter a filename for this image: ")
 
 
@@ -197,7 +208,7 @@ class ScanCropper(PatternMatchingEventHandler):
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.jpg")))
 						print("Possible problem with image alignment on the scan. Rescan and try again.")
 						return
-					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), self.settings.output_jpeg_quality])
 				elif self.settings.output_format == 'png' and self.settings.manual_metadata == False:
 					if not scan.size:  # Checking if the image is not empty.
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.png")))
@@ -210,14 +221,14 @@ class ScanCropper(PatternMatchingEventHandler):
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.jpg")))
 						print("Possible problem with image alignment on the scan. Rescan and try again.")
 						return
-					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), self.settings.output_jpeg_quality])
 				else:
 					print('This output image type is not supported. Only jpg and png. Taking jpg.')
 					if not scan.size:  # Checking if the image is not empty.
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.jpg")))
 						print("Possible problem with image alignment on the scan. Rescan and try again.")
 						return
-					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), self.settings.output_jpeg_quality])
 
 				self.scans += 1
 
@@ -272,13 +283,21 @@ class ScanCropper(PatternMatchingEventHandler):
 			print('=============')
 			self.process_file(file)
 			processed = True
+		self.post_process(processed, file)
 
-		if processed:
-			if not os.path.isdir(self.settings.processed_dir):
-				os.mkdir(self.settings.processed_dir)
-			print('File ' + str(os.path.basename(file)) + ' processed, move it to ' + str(self.settings.processed_dir))
-			shutil.copy(file, os.path.join(self.settings.processed_dir, os.path.basename(file)))
-			os.remove(file)
+
+	def post_process(self, success, file):
+		if not success:
+			print('File ' + str(os.path.basename(file)) + ' not processed successfully.')
+			return
+		if not self.settings.processed_dir:
+			print('File ' + str(os.path.basename(file)) + ' processed.')
+			return
+		if not os.path.isdir(self.settings.processed_dir):
+			os.mkdir(self.settings.processed_dir)
+		print('File ' + str(os.path.basename(file)) + ' processed, move it to ' + str(self.settings.processed_dir))
+		shutil.copy(file, os.path.join(self.settings.processed_dir, os.path.basename(file)))
+		os.remove(file)
 
 
 	def autocrop_images(self):
@@ -302,14 +321,16 @@ class ScanCropper(PatternMatchingEventHandler):
 	def on_created(self, event: FileSystemEvent) -> None:
 		if event.is_directory or not os.path.isfile(event.src_path):
 			return
-		# dirty but working check if file copy is finish, https://stackoverflow.com/a/41105283
+		# dirty but working check if file copy is finish, thx to https://stackoverflow.com/a/41105283 and OCRmyPDF
 		historicalSize = -1
-		while (os.path.isfile(event.src_path) and historicalSize != os.path.getsize(event.src_path)):
+		trys_left = self.settings.retries_loading_file
+		while (trys_left > 0 and os.path.isfile(event.src_path) and historicalSize != os.path.getsize(event.src_path)):
+			trys_left -= 1
 			historicalSize = os.path.getsize(event.src_path)
 			time.sleep(3)
 		self.inspect_file(event.src_path)
 
-	# Obsolete since PollingObserver?!
+
 	def on_closed(self, event: FileSystemEvent) -> None:
 		if event.is_directory or not os.path.isfile(event.src_path) or os.path.getsize(event.src_path) < 1:
 			return
@@ -320,10 +341,14 @@ class ScanCropper(PatternMatchingEventHandler):
 if __name__ == '__main__':
 	settings = ArgParser.parse()
 	cropper = ScanCropper(settings)
-	cropper.autocrop_images()
+	if not settings.no_dirscan:
+		cropper.autocrop_images()
 	if settings.watch:
 		print("Start waiting for new scans.")
-		observer = PollingObserver(timeout=3)
+		if settings.polling_timeout < 1:
+			observer = Observer()
+		else:
+			observer = PollingObserver(timeout = settings.polling_timeout)
 		observer.schedule(cropper, settings.input_dir, recursive=True)
 		observer.start()
 		try:
