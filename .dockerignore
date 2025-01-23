@@ -1,6 +1,7 @@
 .git
 .gitignore
-docker-compose.yml
+.gitlab-ci.yml
+docker-compose.*
 Dockerfile
 example*
 images

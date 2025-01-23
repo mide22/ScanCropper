@@ -4,9 +4,9 @@
 #
 #
 # Usage
-# docker build --network=host -t scancropper .
-# docker run -ti --rm --name=scancropper --network=host -v $(pwd)/scans/input:/mnt/scans/input -v $(pwd)/scans/results:/mnt/scan/results -v $(pwd)/scans/processed:/mnt/scan/processed scancropper
-# docker run -ti --rm --name=scancropper --network=host -v $(pwd)/scans:/mnt/scans scancropper
+# docker build -t scancropper .
+# docker run -ti --rm --name=scancropper -v $(pwd)/scans/input:/mnt/scans/input -v $(pwd)/scans/results:/mnt/scan/results -v $(pwd)/scans/processed:/mnt/scan/processed scancropper --dir=/mnt/scans/input --odir=/mnt/scan/results --pdir=/mnt/scan/processed
+# docker run -ti --rm --name=scancropper -v $(pwd)/scans:/mnt/scans scancropper --dir=/mnt/scans/input --odir=/mnt/scan/results
 #
 FROM ubuntu:noble
 LABEL org.opencontainers.image.title="ScanCropper"

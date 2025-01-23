@@ -1,3 +1,7 @@
+# App for postprocessing scanned documents and photos.
+# Crop photos and doing OCR on documents. See and manage files in http-filebrowser or in samba share.
+# Reverse proxy for a single point of contact to network scanners and users.
+# Should only be used in private LANs because of old/insecure SambaV1, used to be compatible with old network scanners.
 services:
   # ScanCropper itself
   srv-scancropper:
