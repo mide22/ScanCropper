@@ -1,0 +1,180 @@
+# App for postprocessing scanned documents and photos.
+# Crop photos and doing OCR on documents. See and manage files in http-filebrowser or in samba share.
+# Reverse proxy for a single point of contact to network scanners and users.
+# Should only be used in private LANs because of old/insecure SambaV1, used to be compatible with old network scanners.
+services:
+  # ScanCropper itself
+  srv-scancropper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scancropper
+    environment:
+      SC_DIR: "/mnt/scans/input"
+      SC_ODIR: "/mnt/scans/results"
+      SC_ODIR_PROCESSED: "/mnt/scans/processed"
+      # SC_NO_DIRSCAN: 1
+      SC_WATCH: 1
+      SC_POLLING_TIMEOUT: 3
+      SC_OUTPUT_JPEG_QUALITY: 86
+      # SC_OUTPUT_FILE_NAME_PREFIX: "MyPhoto "
+      # SC_OUTPUT_FILE_NAME_PREFIX_STRFTIME: "%Y-%m-%d_%H%M%S "
+      TZ: "Europe/Berlin"
+    restart: unless-stopped
+    volumes:
+      - v-photos-input:/mnt/scans/input
+      - v-photos-processed:/mnt/scans/processed
+      - v-photos-results:/mnt/scans/results
+
+  # Proxy for central serving all services - by https://doc.traefik.io/traefik/
+  srv-proxy:
+    image: traefik:latest
+    container_name: scanproxy
+    command: >
+      --log.level=DEBUG
+      --api.insecure
+      --providers.docker
+      --providers.docker.exposedByDefault=false
+      --entryPoints.filebrowser.address=:80
+      --entryPoints.smb445.address=:445
+    networks:
+      - backend
+      - frontend
+    ports:
+      - 80
+      - 445
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # Web file browser to upload / download / delete files - by https://github.com/filebrowser/filebrowser/
+  srv-filebrowser:
+    image: filebrowser/filebrowser:v2
+    container_name: filebrowser
+    environment:
+      FB_USERNAME: scanner
+      # Password is sc4nn3rPazzw()rrrd
+      # todo: change password (bcrypt hash), https://bcrypt-generator.com or https://gchq.github.io/CyberChef/#recipe=Bcrypt(12)
+      FB_PASSWORD: '$2a$12$7IIEB9y.pt7Q0S.03.g0qeHcRXBMI5IG7tkUbT7Dr6DOPwAe/LHnC'
+      # or disable auth:
+      # FB_NOAUTH: 1
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.filebrowser.entrypoints=filebrowser
+      - traefik.http.routers.filebrowser.rule=PathPrefix("/")
+    networks:
+      - backend
+    ports:
+      - 80
+    volumes:
+      - v-photos-input:/srv/photos-input
+      - v-photos-processed:/srv/photos-processed
+      - v-photos-results:/srv/photos-results
+      - v-documents-input:/srv/documents-input
+      - v-documents-ocr:/srv/documents-ocr
+      - v-documents-processed:/srv/documents-processed
+
+  # Samba by https://hub.docker.com/r/dperson/samba
+  # todo: change the password sc4nn3rPazzw()rrrd
+  srv-samba:
+    image: dperson/samba
+    container_name: samba
+    command: >
+      -p
+      -S
+      -r
+      -u "scanner;sc4nn3rPazzw()rrrd"
+      -s "Photoscan-Input;/share/scanner/photos-input;yes;no;no;scanner;;;Photos to crop"
+      -s "OCR-Incomming-Documents;/share/scanner/documents-input;yes;no;no;scanner;;;Documents to OCR"
+      -s "Scanned;/share/scanner;yes;no;no;scanner;;;Scanned and processed files"
+    labels:
+      - traefik.enable=true
+      - traefik.tcp.routers.samba.entrypoints=smb445
+      - traefik.tcp.routers.samba.rule=HostSNI("*")
+      - traefik.tcp.routers.samba.service=samba-srv
+      - traefik.tcp.services.samba-srv.loadbalancer.server.port=445
+    networks:
+      - backend
+    ports:
+      - 445
+    volumes:
+      - v-photos-input:/share/scanner/photos-input
+      - v-photos-processed:/share/scanner/photos-processed
+      - v-photos-results:/share/scanner/photos-results
+      - v-documents-input:/share/scanner/documents-input
+      - v-documents-ocr:/share/scanner/documents-ocr
+      - v-documents-processed:/share/scanner/documents-processed
+
+  # OCR PDFs by https://github.com/ocrmypdf/OCRmyPDF
+  # https://ocrmypdf.readthedocs.io/en/latest/batch.html#hot-watched-folders
+  srv-pdfocr:
+    image: jbarlow83/ocrmypdf
+    container_name: pdfocr
+    entrypoint: python3
+    command: watcher.py
+    environment:
+      # https://github.com/ocrmypdf/OCRmyPDF/blob/main/misc/watcher.py#L162C13-L162C19
+      OCR_USE_POLLING: 1
+      OCR_POLL_NEW_FILE_SECONDS: 3
+      OCR_RETRIES_LOADING_FILE: 5
+      OCR_ON_SUCCESS_ARCHIVE: 1
+      # set ocrmypdf arguments as JSON, https://ocrmypdf.readthedocs.io/en/latest/cookbook.html
+      OCR_JSON_SETTINGS: '{"language": "eng+deu", "deskew": true, "rotate_pages": true, "clean": true, "redo_ocr": true}'
+      PYTHONBUFFERED: 1
+    restart: unless-stopped
+    volumes:
+      - v-documents-input:/input
+      - v-documents-ocr:/output
+      - v-documents-processed:/processed
+
+
+# Setup volumes where to store the input scanned files, results and the processed original files.
+volumes:
+  # Volumes for scanned photos
+  v-photos-input:
+    driver: local
+    driver_opts:
+      device: ./scans/photos/input/
+      o: bind
+      type: none
+  # Cropped results output
+  v-photos-results:
+    driver: local
+    driver_opts:
+      device: ./scans/photos/results/
+      o: bind
+      type: none
+  # Archive of original files after processing
+  v-photos-processed:
+    driver: local
+    driver_opts:
+      device: ./scans/photos/processed/
+      o: bind
+      type: none
+  #
+  # Volumes for pdf-documents to process OCR:
+  v-documents-input:
+    driver: local
+    driver_opts:
+      device: ./scans/documents/input
+      o: bind
+      type: none
+  # OCRed results output
+  v-documents-ocr:
+    driver: local
+    driver_opts:
+      device: ./scans/documents/ocr/
+      o: bind
+      type: none
+  # archive of original files after processing
+  v-documents-processed:
+    driver: local
+    driver_opts:
+      device: ./scans/documents/processed/
+      o: bind
+      type: none
+
+# Define 2 networks: frontend to the scanner and user; backend is internal only
+networks:
+  frontend:
+#    external: true # must be created before
+  backend:

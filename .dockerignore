@@ -1,0 +1,9 @@
+.git
+.gitignore
+.gitlab-ci.yml
+docker-compose.*
+Dockerfile
+example*
+images
+pdfTopng
+scans
