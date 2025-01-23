@@ -4,5 +4,4 @@
 docker-compose.*
 Dockerfile
 example*
-images
 scans

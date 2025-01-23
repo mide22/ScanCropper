@@ -16,13 +16,13 @@ python3 scan_cropper.py --photos-per-scan 3 --dir ./scans --odir ./images --manu
 <img src="./scans/input/example-3.png" width="500" alt="Scanned input file in .png format">
 
 <p>Result Image 0:</p>
-<img src="./images/example_00.jpg" width="300" alt="Output image 0">
+<img src="./scans/results/example-3_00.jpg" width="300" alt="Output image 0">
 
 <p>Result Image 1:</p>
-<img src="./images/example_01.jpg" width="300" alt="Output image 1">
+<img src="./scans/results/example-3_01.jpg" width="300" alt="Output image 1">
 
 <p>Result Image 2:</p>
-<img src="./images/example_02.jpg" width="450" alt="Output image 1">
+<img src="./scans/results/example-3_02.jpg" width="450" alt="Output image 1">
 
 ## Requirements
 
