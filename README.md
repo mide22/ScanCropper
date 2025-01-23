@@ -6,7 +6,7 @@ PDF scans are converted into a png with a default dpi of 600 (can be changed in 
 Make sure that the pdf scans only have a length of one page.
 ## Use Case Example
 
-Suppose you have a photo album and you scan 3 photos at a time, leaving some space between them on the scanner. Simply run the script with the `--photos-per-scan 3` option on your scanned files. For each file it processes, it will output 3 individual, cropped, and correctly oriented photos from the scan.
+Suppose you have a photo album and you scan 3 photos at a time, leaving some space between them on the scanner. For each file it processes, it will output 3 individual, cropped, and correctly oriented photos from the scan.
 
 ```bash
 python3 scan_cropper.py --photos-per-scan 3 --dir ./scans --odir ./images --manual-name --manual-metadata
@@ -64,23 +64,26 @@ Run the script, specifying the input directory (containing your scanned images) 
 python scan_cropper.py --dir /path/to/input/dir --odir /path/to/output/dir
 ```
 
-You can customize the processing with several options:
+You can customize the processing with several options. Here are some, have a look to [arg_parse.py](arg_parse.py) for more and using environment variables:
 
     `--dir`                     or  `-d`    Specify the location of the scans to process.
     `--odir`                    or  `-o`    Specify where to save the output images.
+    `--pdir`                    or  `-po`   Specify where to move processed scans.
     `--output-format`           or  `-of`   Defines the image output format [jpg (default) or png].
+    `--output-jpeg-quality`                 Defines the quality of jpeg image output, 1-100.
+    `--watch`                   or  `-w`    Specify weather to watch input location for new scans and process them.
     `--manual-name`             or  `-mn`   Independently shows each image and asks for the image name before saving.
     `--manual-metadata`         or  `-mm`   Independently shows each image and asks for individual metadata to attach to the image (only possible for jpg as output format).
     `--num-threads`             or  `-n`    Number of threads to use (default: system number of cores).
-    `--pic-size-diff`           or  `-s`    Approximate size difference between scanned images, as a percent. Set lower if images are of varying sizes (default: 0.80).
     `--thresh`                  or  `-t`    Threshold value for determining photo edges. Use higher values for brighter images, lower for tighter cropping (default: 230).
-    `--photos-per-scan`         or  `-i`    Number of photos to look for per scanned image (default: 1).
     `--blur`                    or  `-b`    Amount of blur to apply when processing. Different values may affect how well scans are found and cropped. Must be an odd number greater than 1 (default: 9).
     `--output-file-name-prefix` or  `-p`    Prefix string to append to the start of output image file names.
+    `--output-file-name-prefix-strftime`    Prefix string, strftime formatted to get datetime.
 
 
 ## Credit
-This project is an up to date and extended version of https://github.com/kosenina/ScannedImageMultiCrop/tree/master.
+This project is an up to date and extended version of https://github.com/murniox/ScanCropper, 
+which is an up to date and extended version of https://github.com/kosenina/ScannedImageMultiCrop/tree/master.
 
 Usefull links:
 

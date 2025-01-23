@@ -1,11 +1,9 @@
 import math as m
 
 class Settings:
-	def __init__(self, threads, thresh, blur, scale, input_dir, output_dir, processed_dir, watch, polling_timeout, no_dirscan, output_file_name_prefix, output_file_name_prefix_strftime, manual_name, manual_metadata, output_format, output_jpeg_quality):
-		self.threads = threads
+	def __init__(self, thresh, blur, input_dir, output_dir, processed_dir, watch, polling_timeout, no_dirscan, output_file_name_prefix, output_file_name_prefix_strftime, manual_name, manual_metadata, output_format, output_jpeg_quality):
 		self.thresh = thresh
 		self.blur = blur
-		self.scale = scale
 		self.input_dir = input_dir
 		self.output_dir = output_dir
 		self.processed_dir = processed_dir

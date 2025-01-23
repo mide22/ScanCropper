@@ -31,8 +31,6 @@ class ScanCropper(PatternMatchingEventHandler):
 		# Watchdog
 		PatternMatchingEventHandler.__init__(self, patterns=self.settings.supported_file_patterns, ignore_directories=True, case_sensitive=False)
 
-	def get_datetime(self):
-		return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 	def convert_pdf_to_png(self, pdf_path):
 		dpi = 600
@@ -62,40 +60,6 @@ class ScanCropper(PatternMatchingEventHandler):
 		
 		return png_paths
 
-
-
-
-	def open_image(self, file_name):
-		path = os.path.join(self.settings.input_dir, file_name)
-		img = cv2.imread(path)
-		if img is None:
-			print("Error: Failed to open image at path: "+path)
-			self.errors += 1
-		return img
-
-	def write_image(self, file_name, img):
-		path = os.path.join(self.settings.output_dir, file_name)
-		success = cv2.imwrite(path, img)
-		if not success:
-			print("Error: Failed to write image "+file_name+" to file.")
-			self.errors += 1
-			return False
-		print("Wrote image to: " + path)
-		return True
-
-	def write_scans(self, file_name, scans):
-		if len(scans) == 0:
-			print("Warning: No scans were found in this image: "+file_name)
-			self.errors += 1
-			return
-		name, ext = os.path.splitext(file_name)
-		if self.settings.output_file_name_prefix:
-			name = "{}_{}".format(self.settings.output_file_name_prefix, name)
-		num = 0
-		for scan in scans:
-			f = "{}_{}{}".format(name, num, ext)
-			self.write_image(f, scan)
-			num += 1
 		
 	# Find regions of interest in the form [rect, box-contour].
 	# Attempts to find however many scans we're looking for in the image.
@@ -115,10 +79,12 @@ class ScanCropper(PatternMatchingEventHandler):
 				candidates.append(b)
 		return candidates
 
+
 	def rotate_image(self, img, angle, center):
 		(h, w) = img.shape[:2]
 		mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 		return cv2.warpAffine(img, mat, (w,h), flags=cv2.INTER_LINEAR)
+
 
 	def rotate_box(self, box, angle, center):
 		rad = -angle * self.settings.deg_to_rad
@@ -135,11 +101,13 @@ class ScanCropper(PatternMatchingEventHandler):
 			rotBox.append(p)
 		return np.array(rotBox)
 
+
 	def get_center(self, box):
 		x_vals = [i[0] for i in box]; y_vals = [i[1] for i in box]
 		cen_x = (max(x_vals) + min(x_vals)) / 2
 		cen_y = (max(y_vals) + min(y_vals)) / 2
 		return (cen_x, cen_y)
+
 
 	# Rotate and crop the candidates.
 	def clip_scans(self, img, candidates):
@@ -161,7 +129,8 @@ class ScanCropper(PatternMatchingEventHandler):
 					"Try straightening the picture, and moving it away from the scanner's edge.", e)
 				self.errors += 1
 		return scans
-		
+
+
 	def find_scans(self, img):
 		blur = cv2.medianBlur(img, self.settings.blur)
 		grey = cv2.cvtColor(blur, cv2.COLOR_BGR2GRAY)
@@ -170,6 +139,7 @@ class ScanCropper(PatternMatchingEventHandler):
 		roi = self.get_candidate_regions(img, contours)
 		scans = self.clip_scans(img, roi)
 		return scans
+
 
 	def process_file(self, file):
 		self.images += 1
@@ -200,7 +170,6 @@ class ScanCropper(PatternMatchingEventHandler):
 					cv2.waitKey(0)
 					cv2.destroyAllWindows()
 					new_filename = input("Please enter a filename for this image: ")
-
 
 				# Saving the image
 				if self.settings.output_format == 'jpg':
@@ -305,9 +274,6 @@ class ScanCropper(PatternMatchingEventHandler):
 			file = os.path.join(self.settings.input_dir, file_name)
 			self.inspect_file(file)
 
-
-		#for file in [f for f in os.listdir(self.settings.input_dir) if f.endswith(tuple(self.settings.image_extensions))]:
-		#	self.process_file(file)
 
 		print("\n-----------------------------------------------------")
 		if self.errors > 0:
