@@ -5,5 +5,4 @@ docker-compose.*
 Dockerfile
 example*
 images
-pdfTopng
 scans

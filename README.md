@@ -13,7 +13,7 @@ python3 scan_cropper.py --photos-per-scan 3 --dir ./scans --odir ./images --manu
 ```
 
 <p>Example Scan:</p>
-<img src="./pdfTopng/example.png" width="500" alt="Scanned input file in .png format">
+<img src="./scans/input/example-3.png" width="500" alt="Scanned input file in .png format">
 
 <p>Result Image 0:</p>
 <img src="./images/example_00.jpg" width="300" alt="Output image 0">
@@ -26,7 +26,7 @@ python3 scan_cropper.py --photos-per-scan 3 --dir ./scans --odir ./images --manu
 
 ## Requirements
 
-- Python 3.6 or above
+- Python 3.9 or above
 - OpenCV
 - NumPy
 - PyMuPDF
