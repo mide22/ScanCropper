@@ -1,12 +1,19 @@
 import numpy as np
-import cv2, os, argparse, datetime, time, errno, math, multiprocessing, pyexiv2, fitz
+import cv2, os, argparse, datetime, time, errno, math, multiprocessing, pyexiv2, pymupdf, shutil
 from concurrent.futures import ThreadPoolExecutor
 from arg_parse import ArgParser
 from settings import Settings
+from datetime import date
+
+# needed for Watchdog
+import time
+from watchdog.events import FileSystemEvent, PatternMatchingEventHandler
+from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
-class ScanCropper:
+class ScanCropper(PatternMatchingEventHandler):
 
 	def __init__(self, settings: Settings):
 		self.settings = settings
@@ -20,20 +27,20 @@ class ScanCropper:
 		except OSError as e:
 			if e.errno != errno.EEXIST:
 				raise
-	
 
-	def get_datetime(self):
-		return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+		# Watchdog
+		PatternMatchingEventHandler.__init__(self, patterns=self.settings.supported_file_patterns, ignore_directories=True, case_sensitive=False)
+
 
 	def convert_pdf_to_png(self, pdf_path):
 		dpi = 600
-		doc = fitz.open(pdf_path)
+		doc = pymupdf.open(pdf_path)
 		png_paths = []
 
 		for i in range(len(doc)):
 			# Rendering options.
 			zoom = dpi / 72
-			mat = fitz.Matrix(zoom, zoom)
+			mat = pymupdf.Matrix(zoom, zoom)
 			# Render page to an image
 			pix = doc.get_page_pixmap(i, matrix=mat)
 			os.makedirs("./pdfTopng", exist_ok=True)
@@ -41,6 +48,11 @@ class ScanCropper:
 			base_name = os.path.basename(pdf_path)
 			name_without_ext = os.path.splitext(base_name)[0]
 			png_path = os.path.join("./pdfTopng", f"{name_without_ext}.png")
+			if os.path.isfile(png_path):
+				nameindex = 1
+				while os.path.isfile(png_path):
+					png_path = os.path.join("./pdfTopng", f"{name_without_ext}("+str(nameindex)+").png")
+					nameindex += 1
 			# Save the image
 			pix.save(png_path)
 			print(f"Saved PNG file: {png_path}")
@@ -48,40 +60,6 @@ class ScanCropper:
 		
 		return png_paths
 
-
-
-
-	def open_image(self, file_name):
-		path = os.path.join(self.settings.input_dir, file_name)
-		img = cv2.imread(path)
-		if img is None:
-			print("Error: Failed to open image at path: "+path)
-			self.errors += 1
-		return img
-
-	def write_image(self, file_name, img):
-		path = os.path.join(self.settings.output_dir, file_name)
-		success = cv2.imwrite(path, img)
-		if not success:
-			print("Error: Failed to write image "+file_name+" to file.")
-			self.errors += 1
-			return False
-		print("Wrote image to: " + path)
-		return True
-
-	def write_scans(self, file_name, scans):
-		if len(scans) == 0:
-			print("Warning: No scans were found in this image: "+file_name)
-			self.errors += 1
-			return
-		name, ext = os.path.splitext(file_name)
-		if self.settings.output_file_name_prefix:
-			name = "{}_{}".format(self.settings.output_file_name_prefix, name)
-		num = 0
-		for scan in scans:
-			f = "{}_{}{}".format(name, num, ext)
-			self.write_image(f, scan)
-			num += 1
 		
 	# Find regions of interest in the form [rect, box-contour].
 	# Attempts to find however many scans we're looking for in the image.
@@ -101,10 +79,12 @@ class ScanCropper:
 				candidates.append(b)
 		return candidates
 
+
 	def rotate_image(self, img, angle, center):
 		(h, w) = img.shape[:2]
 		mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 		return cv2.warpAffine(img, mat, (w,h), flags=cv2.INTER_LINEAR)
+
 
 	def rotate_box(self, box, angle, center):
 		rad = -angle * self.settings.deg_to_rad
@@ -121,11 +101,13 @@ class ScanCropper:
 			rotBox.append(p)
 		return np.array(rotBox)
 
+
 	def get_center(self, box):
 		x_vals = [i[0] for i in box]; y_vals = [i[1] for i in box]
 		cen_x = (max(x_vals) + min(x_vals)) / 2
 		cen_y = (max(y_vals) + min(y_vals)) / 2
 		return (cen_x, cen_y)
+
 
 	# Rotate and crop the candidates.
 	def clip_scans(self, img, candidates):
@@ -147,7 +129,8 @@ class ScanCropper:
 					"Try straightening the picture, and moving it away from the scanner's edge.", e)
 				self.errors += 1
 		return scans
-		
+
+
 	def find_scans(self, img):
 		blur = cv2.medianBlur(img, self.settings.blur)
 		grey = cv2.cvtColor(blur, cv2.COLOR_BGR2GRAY)
@@ -156,6 +139,7 @@ class ScanCropper:
 		roi = self.get_candidate_regions(img, contours)
 		scans = self.clip_scans(img, roi)
 		return scans
+
 
 	def process_file(self, file):
 		self.images += 1
@@ -166,18 +150,26 @@ class ScanCropper:
 		scans = self.find_scans(img)
 		if len(scans) > 0:
 			i = 0
+			if self.settings.output_file_name_prefix:
+				prefix = self.settings.output_file_name_prefix
+			else:
+				prefix = ""
+
+			if self.settings.output_file_name_prefix_strftime:
+				prefix = "{}{}".format(prefix, datetime.datetime.now().strftime(self.settings.output_file_name_prefix_strftime))
+
 			for scan in scans:
 				# Get the filename and metadata from the user
 				new_filename = f"{os.path.splitext(os.path.basename(file))[0]}_{i}"
+				if prefix:
+					new_filename = "{}{}".format(prefix, new_filename)
 
 				if self.settings.manual_name:
 					# Display the image
 					cv2.imshow('Image', scan)
 					cv2.waitKey(0)
 					cv2.destroyAllWindows()
-
 					new_filename = input("Please enter a filename for this image: ")
-
 
 				# Saving the image
 				if self.settings.output_format == 'jpg':
@@ -185,7 +177,7 @@ class ScanCropper:
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.jpg")))
 						print("Possible problem with image alignment on the scan. Rescan and try again.")
 						return
-					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), self.settings.output_jpeg_quality])
 				elif self.settings.output_format == 'png' and self.settings.manual_metadata == False:
 					if not scan.size:  # Checking if the image is not empty.
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.png")))
@@ -198,14 +190,14 @@ class ScanCropper:
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.jpg")))
 						print("Possible problem with image alignment on the scan. Rescan and try again.")
 						return
-					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), self.settings.output_jpeg_quality])
 				else:
 					print('This output image type is not supported. Only jpg and png. Taking jpg.')
 					if not scan.size:  # Checking if the image is not empty.
 						print("Skipping empty image: " + str(os.path.join(self.settings.output_dir, f"{new_filename}.jpg")))
 						print("Possible problem with image alignment on the scan. Rescan and try again.")
 						return
-					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+					cv2.imwrite(os.path.join(self.settings.output_dir, f"{new_filename}.jpg"), scan, [int(cv2.IMWRITE_JPEG_QUALITY), self.settings.output_jpeg_quality])
 
 				self.scans += 1
 
@@ -244,23 +236,44 @@ class ScanCropper:
 			print(f'No scans found in file {file}')
 
 
+	def inspect_file(self, file):
+		if not os.path.isfile(file):
+			return
+		processed = False
+		if file.endswith('.pdf') or file.endswith('.PDF'):
+			# Convert PDF to PNG and then process each PNG.
+			png_paths = self.convert_pdf_to_png(file)
+			for png_path in png_paths:
+				print('=============')
+				self.process_file(png_path)
+				os.remove(png_path)
+				processed = True
+		elif file.endswith(tuple(self.settings.image_extensions)):
+			print('=============')
+			self.process_file(file)
+			processed = True
+		self.post_process(processed, file)
+
+
+	def post_process(self, success, file):
+		if not success:
+			print('File ' + str(os.path.basename(file)) + ' not processed successfully.')
+			return
+		if not self.settings.processed_dir:
+			print('File ' + str(os.path.basename(file)) + ' processed.')
+			return
+		if not os.path.isdir(self.settings.processed_dir):
+			os.mkdir(self.settings.processed_dir)
+		print('File ' + str(os.path.basename(file)) + ' processed, move it to ' + str(self.settings.processed_dir))
+		shutil.copy(file, os.path.join(self.settings.processed_dir, os.path.basename(file)))
+		os.remove(file)
 
 
 	def autocrop_images(self):
-		for file in os.listdir(self.settings.input_dir):
-			file = os.path.join(self.settings.input_dir, file)
-			if file.endswith('.pdf') or file.endswith('PDF'):
-				# Convert PDF to PNG and then process each PNG.
-				png_paths = self.convert_pdf_to_png(file)
-				for png_path in png_paths:
-					print('=============')
-					self.process_file(png_path)
-			elif file.endswith(tuple(self.settings.image_extensions)):
-				print('=============')
-				self.process_file(file)
+		for file_name in os.listdir(self.settings.input_dir):
+			file = os.path.join(self.settings.input_dir, file_name)
+			self.inspect_file(file)
 
-		#for file in [f for f in os.listdir(self.settings.input_dir) if f.endswith(tuple(self.settings.image_extensions))]:
-		#	self.process_file(file)
 
 		print("\n-----------------------------------------------------")
 		if self.errors > 0:
@@ -269,9 +282,46 @@ class ScanCropper:
 			print("Successfully cropped all the images from the scan files.")
 		print("Cropped {} pictures from {} scan files.".format(self.scans, self.images))
 
+
+	# Watchdog-event on (file) created
+	def on_created(self, event: FileSystemEvent) -> None:
+		if event.is_directory or not os.path.isfile(event.src_path):
+			return
+		# dirty but working check if file copy is finish, thx to https://stackoverflow.com/a/41105283 and OCRmyPDF
+		historicalSize = -1
+		trys_left = self.settings.retries_loading_file
+		while (trys_left > 0 and os.path.isfile(event.src_path) and historicalSize != os.path.getsize(event.src_path)):
+			trys_left -= 1
+			historicalSize = os.path.getsize(event.src_path)
+			time.sleep(3)
+		self.inspect_file(event.src_path)
+
+
+	def on_closed(self, event: FileSystemEvent) -> None:
+		if event.is_directory or not os.path.isfile(event.src_path) or os.path.getsize(event.src_path) < 1:
+			return
+		self.inspect_file(event.src_path)
+
 #--------------------------------------------------------------------
 
 if __name__ == '__main__':
 	settings = ArgParser.parse()
 	cropper = ScanCropper(settings)
-	cropper.autocrop_images()
+	if not settings.no_dirscan:
+		cropper.autocrop_images()
+	if settings.watch:
+		print("Start waiting for new scans.")
+		if settings.polling_timeout < 1:
+			observer = Observer()
+		else:
+			observer = PollingObserver(timeout = settings.polling_timeout)
+		observer.schedule(cropper, settings.input_dir, recursive=True)
+		observer.start()
+		try:
+			while True:
+				time.sleep(1)
+		except KeyboardInterrupt:
+			observer.stop()
+		finally:
+			observer.stop()
+			observer.join()
